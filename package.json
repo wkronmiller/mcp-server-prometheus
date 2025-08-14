@@ -1,6 +1,6 @@
 {
   "name": "@wkronmiller/prometheus-mcp-server",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A Model Context Protocol (MCP) server that provides tools for interacting with Prometheus monitoring systems",
   "keywords": [
     "prometheus",
@@ -18,7 +18,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "prometheus-mcp-server": "dist/index.js"
+    "@wkronmiller/prometheus-mcp-server": "dist/index.js"
   },
   "files": [
     "dist",
