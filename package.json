@@ -40,12 +40,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wkronmiller/prometheus-mcp-server.git"
+    "url": "git+https://github.com/wkronmiller/mcp-server-prometheus.git"
   },
   "bugs": {
-    "url": "https://github.com/wkronmiller/prometheus-mcp-server/issues"
+    "url": "https://github.com/wkronmiller/mcp-server-prometheus/issues"
   },
-  "homepage": "https://github.com/wkronmiller/prometheus-mcp-server#readme",
   "devDependencies": {
     "@types/node": "^20.19.10",
     "tsx": "^4.0.0",
