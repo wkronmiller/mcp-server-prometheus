@@ -1,6 +1,6 @@
 {
   "name": "@wkronmiller/prometheus-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Model Context Protocol (MCP) server that provides tools for interacting with Prometheus monitoring systems",
   "keywords": [
     "prometheus",
