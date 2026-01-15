@@ -5,6 +5,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { PrometheusDriver } from 'prometheus-query';
 import { Endpoint, BaseUrl } from './settings.js';
+import {
+  DEFAULT_LIMIT,
+  DEFAULT_VALUES_LIMIT,
+  paginationSchema,
+  rangeQueryPaginationSchema,
+  paginateArray,
+  paginateNestedArray,
+  paginateMultipleArrays,
+  paginateRangeQuery,
+  formatPaginatedResponse
+} from './pagination.js';
 
 export function createServer() {
   const server = new McpServer({ 
@@ -57,17 +68,27 @@ export function createServer() {
       title: "Prometheus Targets",
       description: "Get Prometheus targets (active, dropped, or any)",
       inputSchema: {
-        state: z.string().optional().describe("Target state: 'active', 'dropped', or 'any'")
+        state: z.string().optional().describe("Target state: 'active', 'dropped', or 'any'"),
+        ...paginationSchema
       }
     },
-    async ({ state = 'active' }) => {
+    async ({ state = 'active', limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
-        const targets = await prom.targets(state as any);
+        const targets = await prom.targets(state as 'active' | 'dropped' | 'any');
+        const { data, pagination } = paginateMultipleArrays(
+          targets as object,
+          {
+            activeTargets: 'activeTargets',
+            droppedTargets: 'droppedTargets'
+          },
+          offset,
+          limit
+        );
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(targets, null, 2)
+              text: formatPaginatedResponse(data, pagination)
             }
           ]
         };
@@ -91,16 +112,19 @@ export function createServer() {
     {
       title: "Prometheus Label Names",
       description: "Get all available label names",
-      inputSchema: {}
+      inputSchema: {
+        ...paginationSchema
+      }
     },
-    async () => {
+    async ({ limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
         const names = await prom.labelNames();
+        const { items, pagination } = paginateArray(names as string[], offset, limit);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(names, null, 2)
+              text: formatPaginatedResponse(items, pagination)
             }
           ]
         };
@@ -125,17 +149,19 @@ export function createServer() {
       title: "Prometheus Label Values",
       description: "Get all values for a specific label name",
       inputSchema: {
-        labelName: z.string().describe("The label name to get values for (e.g., '__name__' for all metrics)")
+        labelName: z.string().describe("The label name to get values for (e.g., '__name__' for all metrics)"),
+        ...paginationSchema
       }
     },
-    async ({ labelName }) => {
+    async ({ labelName, limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
         const values = await prom.labelValues(labelName);
+        const { items, pagination } = paginateArray(values as string[], offset, limit);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(values, null, 2)
+              text: formatPaginatedResponse(items, pagination)
             }
           ]
         };
@@ -161,14 +187,32 @@ export function createServer() {
       description: "Execute an instant PromQL query",
       inputSchema: {
         query: z.string().describe("PromQL query string"),
-        time: z.number().optional().describe("Unix timestamp for query evaluation (optional, defaults to now)")
+        time: z.number().optional().describe("Unix timestamp for query evaluation (optional, defaults to now)"),
+        ...paginationSchema
       }
     },
-    async ({ query, time }) => {
+    async ({ query, time, limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
-        const result = time !== undefined 
+        const result = time !== undefined
           ? await prom.instantQuery(query, time)
           : await prom.instantQuery(query);
+
+        // Only paginate vector/matrix results - scalar/string results are tuples, not arrays
+        // Matrix can occur if user runs a range selector like 'up[5m]' in an instant query
+        const typedResult = result as { resultType: string; result: unknown };
+        if (typedResult.resultType === 'vector' || typedResult.resultType === 'matrix') {
+          const { data, pagination } = paginateNestedArray(result as object, 'result', offset, limit);
+          return {
+            content: [
+              {
+                type: "text",
+                text: formatPaginatedResponse(data, pagination)
+              }
+            ]
+          };
+        }
+
+        // For scalar/string results, return as-is without pagination
         return {
           content: [
             {
@@ -201,17 +245,19 @@ export function createServer() {
         query: z.string().describe("PromQL query string"),
         start: z.number().describe("Start time as Unix timestamp"),
         end: z.number().describe("End time as Unix timestamp"),
-        step: z.string().describe("Query resolution step width (e.g., '5m', '1h')")
+        step: z.string().describe("Query resolution step width (e.g., '5m', '1h')"),
+        ...rangeQueryPaginationSchema
       }
     },
-    async ({ query, start, end, step }) => {
+    async ({ query, start, end, step, limit = DEFAULT_LIMIT, offset = 0, valuesLimit = DEFAULT_VALUES_LIMIT }) => {
       try {
         const result = await prom.rangeQuery(query, start, end, step);
+        const { data, pagination } = paginateRangeQuery(result, offset, limit, valuesLimit);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2)
+              text: formatPaginatedResponse(data, pagination)
             }
           ]
         };
@@ -238,21 +284,23 @@ export function createServer() {
       inputSchema: {
         match: z.string().describe("Series selector (e.g., 'up', '{job=\"prometheus\"}')"),
         start: z.number().optional().describe("Start time as Unix timestamp (optional)"),
-        end: z.number().optional().describe("End time as Unix timestamp (optional)")
+        end: z.number().optional().describe("End time as Unix timestamp (optional)"),
+        ...paginationSchema
       }
     },
-    async ({ match, start, end }) => {
+    async ({ match, start, end, limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
         const series = await prom.series(
-          match, 
-          start || Date.now() - 3600000, 
+          match,
+          start || Date.now() - 3600000,
           end || Date.now()
         );
+        const { items, pagination } = paginateArray(series as unknown[], offset, limit);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(series, null, 2)
+              text: formatPaginatedResponse(items, pagination)
             }
           ]
         };
@@ -276,16 +324,19 @@ export function createServer() {
     {
       title: "Prometheus Alerts",
       description: "Get active alerts from Prometheus",
-      inputSchema: {}
+      inputSchema: {
+        ...paginationSchema
+      }
     },
-    async () => {
+    async ({ limit = DEFAULT_LIMIT, offset = 0 }) => {
       try {
         const alerts = await prom.alerts();
+        const { items, pagination } = paginateArray(alerts as unknown[], offset, limit);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(alerts, null, 2)
+              text: formatPaginatedResponse(items, pagination)
             }
           ]
         };
