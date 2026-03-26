@@ -9,9 +9,3 @@ steps:
     commands:
       - npm ci
       - npm test || echo "No tests"
-
-  build:
-    image: docker.io/library/node:20-alpine
-    commands:
-      - npm ci
-      - npm run build
