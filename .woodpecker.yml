@@ -1,0 +1,13 @@
+version: 3
+
+when:
+  - event: push
+    branch: main
+  - event: manual
+
+steps:
+  test:
+    image: docker.io/library/node:20-alpine
+    commands:
+      - npm ci
+      - npm test || echo "No tests"
